@@ -25,6 +25,9 @@ public class JobsdbService {
     @Value("${jobsdb.password}")
     private String password;
 
+    @Value("${jobsdb.keyword}")
+    private String keyword;
+
     private WebDriver driver;
     private WebDriverWait wait;
 
@@ -86,9 +89,7 @@ public class JobsdbService {
         WebElement loginButton = wait.until(ExpectedConditions.elementToBeClickable(By.linkText("Sign in")));
         jsClick(loginButton);
 
-        WebElement googleButton = wait.until(ExpectedConditions.elementToBeClickable(
-                By.xpath("//button[descendant::div[contains(text(), 'Continue with Google')]]")
-        ));
+        WebElement googleButton = wait.until(ExpectedConditions.elementToBeClickable(By.xpath("//button[descendant::div[contains(text(), 'Continue with Google')]]")));
         jsClick(googleButton);
 
         String originalWindow = driver.getWindowHandle();
@@ -133,16 +134,12 @@ public class JobsdbService {
         driver.switchTo().window(originalWindow);
     }
 
-    public void getJobs() {
-        // Step 3: Search for jobs
-//            WebElement searchBox = wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("searchKeywordsField")));
-//            searchBox.sendKeys("Java Developer");
-//            searchBox.submit();
+    public void getJobs() throws InterruptedException {
+
+        searchJobs();
 
 // Step 4: Extract job listings
-        List<WebElement> jobListings = wait.until(ExpectedConditions.presenceOfAllElementsLocatedBy(
-                By.cssSelector("div.eihuid93.eihuid7z.eihuidbb.eihuida7.eihuid5f.w39xvk4.w39xvk5.w39xvk6")
-        ));
+        List<WebElement> jobListings = wait.until(ExpectedConditions.presenceOfAllElementsLocatedBy(By.cssSelector("article[data-automation='normalJob']")));
 
         for (WebElement job : jobListings) {
             Map<String, String> jobDetails = new HashMap<>();
@@ -169,16 +166,16 @@ public class JobsdbService {
 // Extract company name
             String company = "";
             try {
-                WebElement companyElement = job.findElement(By.cssSelector("span[data-automation='jobAdvertiser']"));
+                WebElement companyElement = job.findElement(By.cssSelector("a[data-automation='jobCompany']"));
                 company = companyElement.getText();
             } catch (Exception e) {
                 System.err.println("Company name not found for job: " + jobTitle + " - " + e.getMessage());
             }
-                jobDetails.put("company", company);
+            jobDetails.put("company", company);
 // Extract location (first span in the location/salary div)
             String location = "";
             try {
-                WebElement locationElement = job.findElement(By.cssSelector("div.eihuid5b.eihuidhf.eihuid6n > span:first-child"));
+                WebElement locationElement = job.findElement(By.cssSelector("a[data-automation='jobLocation']"));
                 location = locationElement.getText();
             } catch (Exception e) {
                 System.err.println("Location not found for job: " + jobTitle + " - " + e.getMessage());
@@ -211,12 +208,19 @@ public class JobsdbService {
             jobs.add(jobDetails);
 
             // Print for debugging
-            System.out.println("Job: " + jobTitle + " | Company: " + company + " | Location: " + location +
-                    " | Salary: " + jobDetails.get("salary") + " | Date: " + postingDate + " | Link: " + jobLink);
+            System.out.println("Job: " + jobTitle + " | Company: " + company + " | Location: " + location + " | Salary: " + jobDetails.get("salary") + " | Date: " + postingDate + " | Link: " + jobLink);
 
 
         }
 
+    }
+
+    private void searchJobs() throws InterruptedException {
+        // Step 3: Search for jobs
+        WebElement searchBox = wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("keywords-input")));
+        searchBox.sendKeys(keyword);
+        WebElement searchButton = wait.until(ExpectedConditions.elementToBeClickable(By.id("searchButton")));
+        searchButton.click();
     }
 
     public void applyToJobs() {
@@ -225,7 +229,7 @@ public class JobsdbService {
             for (Map<String, String> job : jobs) {
 //                Map<String, String> jobDetails = new HashMap<>(f);
                 try {
-                    if(!job.get("company").equals("i-CABLE Communications Limited")) {
+                    if (!job.get("company").equals("i-CABLE Communications Limited")) {
                         driver.get(job.get("link"));
 
                         System.out.println("Navigated to job page: " + job.get("title"));
@@ -246,12 +250,11 @@ public class JobsdbService {
                         driver.navigate().back();
                     }
                 } catch (Exception e) {
-                System.err.println("Failed to apply for job: " + job.get("title") + " - " + e.getMessage());
-            }
+                    System.err.println("Failed to apply for job: " + job.get("title") + " - " + e.getMessage());
+                }
             }
         } catch (Exception e) {
             System.err.println("Error occurred: " + e.getMessage());
-            e.printStackTrace();
         } finally {
             driver.quit();
         }
@@ -261,16 +264,14 @@ public class JobsdbService {
 
         try {
             // Step 1: Attempt to submit the form to trigger validation
-            WebElement noCoverLetterRadio = wait.until(ExpectedConditions.presenceOfElementLocated(
-                    By.cssSelector("input[data-testid='coverLetter-method-none']")));
+            WebElement noCoverLetterRadio = wait.until(ExpectedConditions.presenceOfElementLocated(By.cssSelector("input[data-testid='coverLetter-method-none']")));
             jsClick(noCoverLetterRadio);
             System.out.println("Selected 'Don’t include a cover letter");
 
-            WebElement continueButton = wait.until(ExpectedConditions.presenceOfElementLocated(
-                    By.cssSelector("button[data-testid='continue-button']")));
+            WebElement continueButton = wait.until(ExpectedConditions.presenceOfElementLocated(By.cssSelector("button[data-testid='continue-button']")));
             continueButton.click();
         } catch (Exception e) {
-            System.out.println("Initial continue button click failed, checking form..."+e.getMessage());
+            System.out.println("Initial continue button click failed, checking form..." + e.getMessage());
         }
 
         // Step 2: Check for unfilled required fields
@@ -281,6 +282,7 @@ public class JobsdbService {
                 List<WebElement> errorMessages = driver.findElements(By.cssSelector("[id*='question-'][id$='-message']"));
                 if (!errorMessages.isEmpty()) {
                     formComplete = true; // No errors, form is complete
+                    System.out.println("have question that can not answer with");
                     break;
                 }
 
@@ -302,8 +304,7 @@ public class JobsdbService {
 //                }
 
                 // Step 4: Retry submitting the form
-                WebElement continueButton = wait.until(ExpectedConditions.elementToBeClickable(
-                        By.cssSelector("[data-testid='continue-button']")));
+                WebElement continueButton = wait.until(ExpectedConditions.elementToBeClickable(By.cssSelector("[data-testid='continue-button']")));
                 Thread.sleep(2000);
                 continueButton.click();
             } catch (Exception e) {
@@ -311,8 +312,7 @@ public class JobsdbService {
                 formComplete = true; // Exit loop to avoid infinite retry
             }
         }
-        WebElement submitButton = wait.until(ExpectedConditions.elementToBeClickable(
-                By.cssSelector("button[data-testid='review-submit-application']")));
+        WebElement submitButton = wait.until(ExpectedConditions.elementToBeClickable(By.cssSelector("button[data-testid='review-submit-application']")));
         submitButton.click();
 
         System.out.println("Selected submitButton");
